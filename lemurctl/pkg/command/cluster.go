@@ -4,12 +4,21 @@ import (
 	"fmt"
 	"github.com/turbonomic/lemur/lemurctl/pkg/influx"
 	"github.com/urfave/cli"
+	"strings"
 )
 
 var (
-	headerFormat  = "%-40s%-25s\n"
-	contentFormat = "%-40s%-25s\n"
+	headerFormat  = "%-40s%-30s%-25s\n"
+	contentFormat = "%-40s%-30s%-25s\n"
 )
+
+type cluster struct {
+	clusterID   string
+	clusterType string
+	displayName string
+}
+
+var clusterMap = map[string]*cluster{}
 
 func GetCluster(c *cli.Context) error {
 	clusterType := c.String("type")
@@ -21,7 +30,7 @@ func GetCluster(c *cli.Context) error {
 		return err
 	}
 	defer db.Close()
-	fmt.Printf(headerFormat, "ID", "TYPE")
+	fmt.Printf(headerFormat, "ID", "NAME", "TYPE")
 	if clusterType == "vm" {
 		return GetVMCluster(c, db)
 	}
@@ -38,7 +47,14 @@ func GetVMCluster(c *cli.Context, db *influx.DBInstance) error {
 		return err
 	}
 	for _, value := range row.Values {
-		fmt.Printf(contentFormat, value[1], "vm")
+		addCluster(value[1].(string), "vm")
+	}
+	for _ , cluster := range clusterMap {
+		fmt.Printf(
+			contentFormat,
+			cluster.clusterID,
+			cluster.displayName,
+			cluster.clusterType)
 	}
 	return nil
 }
@@ -53,7 +69,34 @@ func GetHostCluster(c *cli.Context, db *influx.DBInstance) error {
 		return err
 	}
 	for _, value := range row.Values {
-		fmt.Printf(contentFormat, value[1], "host")
+		addCluster(value[1].(string), "host")
+	}
+	for _ , cluster := range clusterMap {
+		fmt.Printf(
+			contentFormat,
+			cluster.clusterID,
+			cluster.displayName,
+			cluster.clusterType)
 	}
 	return nil
+}
+
+func addCluster(rowValue string, clusterType string) {
+	parts := strings.SplitN(rowValue, "::", 2)
+	clusterID := parts[0]
+	var displayName string
+	if len(parts) > 1 {
+		displayName = parts[1]
+	}
+	if _, ok := clusterMap[clusterID]; !ok {
+		clusterMap[clusterID] = &cluster{
+			clusterID:   clusterID,
+			clusterType: clusterType,
+			displayName: displayName,
+		}
+	} else {
+		if clusterMap[clusterID].displayName == "" {
+			clusterMap[clusterID].displayName = displayName
+		}
+	}
 }
